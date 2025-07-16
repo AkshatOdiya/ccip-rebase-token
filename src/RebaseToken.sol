@@ -39,6 +39,26 @@ contract RebaseToken is ERC20 {
         _mint(_to, _amount);
     }
 
+    /**
+     * @notice Burn the user tokens, e.g., when they withdraw from a vault or for cross-chain transfers.
+     * Handles burning the entire balance if _amount is type(uint256).max.
+     * @param _from The user address from which to burn tokens.
+     * @param _amount The amount of tokens to burn. Use type(uint256).max to burn all tokens.
+     */
+    function burn(address _from, uint256 _amount) external {
+        /*
+        A common convention in DeFi is to use type(uint256).max as an input _amount to signify an intent to interact 
+        with the user's entire balance. This helps solve the "dust" problem: tiny, fractional amounts of tokens (often from 
+        interest) that might accrue between the moment a user initiates a transaction (like a full withdrawal) and the 
+        time it's actually executed on the blockchain due to network latency or block confirmation times.
+         */
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_from);
+        }
+        _mintAccruedInterest(_from);
+        _burn(_from, _amount);
+    }
+
     // calculate the balance for the user including the interest rate that has accumulated since the last update
     // i.e, (principle balance) + some interest that has accrued
     function balanceOf(address _user) public view override returns (uint256) {
@@ -77,6 +97,10 @@ contract RebaseToken is ERC20 {
 
     // Accrued interest is the interest that has been earned over time but not yet paid out or claimed.
     // CEI pattern
+    /**
+     * @notice Mint the accrued interest to the user since the last time they interacted with the protocol (e.g. burn, mint, transfer)
+     * @param _user The user to mint the accrued interest to
+     */
     function _mintAccruedInterest(address _user) internal {
         // (1) find their current balance of rebase tokens that have been minted to the user --> principle balance
         uint256 previousPrincipleBalance = super.balanceOf(_user);
