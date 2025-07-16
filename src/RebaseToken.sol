@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
  * @title RebaseToken
@@ -10,21 +12,26 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  * @notice The interest rate in the smart contract can only decrease.
  * @notice Each user will have their own interest rate that is the global interest rate at the time of deposit.
  */
-contract RebaseToken is ERC20 {
+contract RebaseToken is ERC20, Ownable, AccessControl {
     error RebaseToken__NewInterestRateShouldBeLessThanThePreviousInterestRate(
         uint256 oldInterestRate, uint256 newInterestRate
     );
 
     uint256 private constant PRECISION_FACTOR = 1e18;
+    bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
     uint256 private s_interestRate = 5e10;
     mapping(address => uint256) private s_userInterestRate;
     mapping(address => uint256) private s_lastUpdatedTimeStamp;
 
     event InterestRateSet(uint256 indexed newInterestRate);
 
-    constructor() ERC20("RebaseToken", "RBT") {}
+    constructor() ERC20("RebaseToken", "RBT") Ownable(msg.sender) {}
 
-    function setInterestRate(uint256 _newInterestRate) external {
+    function grantMintAndBurnRole(address _account) external onlyOwner {
+        _grantRole(MINT_AND_BURN_ROLE, _account);
+    }
+
+    function setInterestRate(uint256 _newInterestRate) external onlyOwner {
         // As the interest rate can only decrease
         if (_newInterestRate > s_interestRate) {
             revert RebaseToken__NewInterestRateShouldBeLessThanThePreviousInterestRate(s_interestRate, _newInterestRate);
@@ -33,7 +40,12 @@ contract RebaseToken is ERC20 {
         emit InterestRateSet(_newInterestRate);
     }
 
-    function mint(address _to, uint256 _amount) external {
+    // to get the principle tokens minted to the user without any interest that has accrued since the last time user interacted with protocol
+    function principleBalanceOf(address _user) external view returns (uint256) {
+        return super.balanceOf(_user);
+    }
+
+    function mint(address _to, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccruedInterest(_to);
         s_userInterestRate[_to] = s_interestRate;
         _mint(_to, _amount);
@@ -45,7 +57,7 @@ contract RebaseToken is ERC20 {
      * @param _from The user address from which to burn tokens.
      * @param _amount The amount of tokens to burn. Use type(uint256).max to burn all tokens.
      */
-    function burn(address _from, uint256 _amount) external {
+    function burn(address _from, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
         /*
         A common convention in DeFi is to use type(uint256).max as an input _amount to signify an intent to interact 
         with the user's entire balance. This helps solve the "dust" problem: tiny, fractional amounts of tokens (often from 
@@ -71,6 +83,40 @@ contract RebaseToken is ERC20 {
         saved from possible integer overflow.
         */
         return super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceLastUpdate(_user) / PRECISION_FACTOR;
+    }
+
+    /**
+     * @notice Transfers tokens from the caller to a recipient.
+     * Accrued interest for both sender and recipient is minted before the transfer.
+     * If the recipient is new, they inherit the sender's interest rate.
+     * @param _recipient The address to transfer tokens to.
+     * @param _amount The amount of tokens to transfer. Can be type(uint256).max to transfer full balance.
+     * @return A boolean indicating whether the operation succeeded.
+     */
+    function transfer(address _recipient, uint256 _amount) public override returns (bool) {
+        _mintAccruedInterest(msg.sender);
+        _mintAccruedInterest(_recipient);
+        // this check is for, if msg.sender want to transfer all of their amount to recipient
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(msg.sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRate[_recipient] = s_userInterestRate[msg.sender];
+        }
+        return super.transfer(_recipient, _amount);
+    }
+
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
+        _mintAccruedInterest(_sender);
+        _mintAccruedInterest(_recipient);
+        // this check is for, if msg.sender want to transfer all of their amount to recipient
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRate[_recipient] = s_userInterestRate[_sender];
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
     }
 
     /**
@@ -115,5 +161,9 @@ contract RebaseToken is ERC20 {
 
     function getUserInterestRate(address _user) external view returns (uint256) {
         return s_userInterestRate[_user];
+    }
+
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
     }
 }
