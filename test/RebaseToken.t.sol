@@ -23,6 +23,10 @@ contract RebaseTokenTest is Test {
         vm.stopPrank();
     }
 
+    function addRewardsToVault(uint256 rewardAmount) public {
+        (bool success,) = payable(address(vault)).call{value: rewardAmount}("");
+    }
+
     function testDepositLinear(uint256 amount) public {
         amount = bound(amount, 1e5, type(uint96).max);
         // 1. Deposit
@@ -45,5 +49,42 @@ contract RebaseTokenTest is Test {
         // The test will fail due to unavoidable rounding errors in integer math if simple assertEq is used. Allow a difference of 1 in your assertion to fix this.
         assertApproxEqAbs(endBalance - middleBalance, middleBalance - startBalance, 1);
         vm.stopPrank();
+    }
+
+    function testRedeemImmediately(uint256 amount) public {
+        amount = bound(amount, 1e5, type(uint96).max);
+        // 1. deposit
+        vm.startPrank(user);
+        vm.deal(user, amount);
+        vault.deposit{value: amount}();
+        uint256 startBalance = rebaseToken.balanceOf(user);
+        assertEq(startBalance, amount);
+        // 2. redeem
+        vault.redeem(type(uint256).max);
+        // this assertion is for checking rebase token amount
+        assertEq(rebaseToken.balanceOf(user), 0);
+        // this assertion is for checking eth amount
+        assertEq(address(user).balance, amount);
+    }
+
+    function testRedeemAfterSomeTimeHasPassed(uint256 depositAmount, uint256 time) public {
+        time = bound(time, 1000, type(uint256).max);
+        depositAmount = bound(depositAmount, 1e5, type(uint96).max);
+        // 1. deposit
+        vm.startPrank(user);
+        vm.deal(user, depositAmount);
+        vault.deposit{value: depositAmount}();
+
+        // 2. warp the time
+        vm.warp(block.timestamp + time);
+        uint256 balanceAfterWarp = rebaseToken.balanceOf(user);
+        // 2. (b) Add the rewards to the vault
+        addRewardsToVault(depositAmount - balanceAfterWarp);
+        // 3. redeem
+        vault.redeem(type(uint256).max);
+
+        uint256 ethBalance = address(user).balance;
+        assertEq(ethBalance, balanceAfterWarp);
+        assertGt(ethBalance, depositAmount);
     }
 }
