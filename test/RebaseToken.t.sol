@@ -68,19 +68,22 @@ contract RebaseTokenTest is Test {
     }
 
     function testRedeemAfterSomeTimeHasPassed(uint256 depositAmount, uint256 time) public {
-        time = bound(time, 1000, type(uint256).max);
+        time = bound(time, 1000, type(uint96).max);
         depositAmount = bound(depositAmount, 1e5, type(uint96).max);
         // 1. deposit
-        vm.startPrank(user);
         vm.deal(user, depositAmount);
+        vm.prank(user);
         vault.deposit{value: depositAmount}();
 
         // 2. warp the time
         vm.warp(block.timestamp + time);
         uint256 balanceAfterWarp = rebaseToken.balanceOf(user);
         // 2. (b) Add the rewards to the vault
-        addRewardsToVault(depositAmount - balanceAfterWarp);
+        vm.deal(owner, balanceAfterWarp - depositAmount);
+        vm.prank(owner);
+        addRewardsToVault(balanceAfterWarp - depositAmount);
         // 3. redeem
+        vm.prank(user);
         vault.redeem(type(uint256).max);
 
         uint256 ethBalance = address(user).balance;
