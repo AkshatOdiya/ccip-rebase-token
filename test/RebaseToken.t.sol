@@ -90,4 +90,61 @@ contract RebaseTokenTest is Test {
         assertEq(ethBalance, balanceAfterWarp);
         assertGt(ethBalance, depositAmount);
     }
+
+    function testTransfer(uint256 amount, uint256 amountToSend) public {
+        amount = bound(amount, 1e5 + 1e5, type(uint96).max);
+        amountToSend = bound(amountToSend, 1e5, amount - 1e5);
+
+        // 1.deposit
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+
+        address user2 = makeAddr("user2");
+        uint256 userBalance = rebaseToken.balanceOf(user);
+        uint256 user2Balance = rebaseToken.balanceOf(user2);
+        assertEq(userBalance, amount);
+        assertEq(user2Balance, 0);
+
+        // owner reduces the interest rate
+        vm.prank(owner);
+        rebaseToken.setInterestRate(4e10);
+
+        // 2. transfer
+        vm.prank(user);
+        rebaseToken.transfer(user2, amountToSend);
+        uint256 userBalanceAfterTransfer = rebaseToken.balanceOf(user);
+        uint256 user2BalanceAfterTransfer = rebaseToken.balanceOf(user2);
+        assertEq(userBalanceAfterTransfer, userBalance - amountToSend);
+        assertEq(user2BalanceAfterTransfer, amountToSend);
+
+        // check the user interest rate has been inherited (5e10 not 4e10)
+        assertEq(rebaseToken.getUserInterestRate(user), 5e10);
+        assertEq(rebaseToken.getUserInterestRate(user2), 5e10);
+    }
+
+    function testGetPrincipleAmount(uint256 amount) public {
+        amount = bound(amount, 1e5, type(uint96).max);
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+        assertEq(rebaseToken.principleBalanceOf(user), amount);
+    }
+
+    function testGetRebaseTokenAddress() public view {
+        assertEq(vault.getRebaseTokenAddress(), address(rebaseToken));
+    }
+
+    function testSetInterestRateReverts(uint256 interestRate) public {
+        interestRate = bound(interestRate, 5e11, type(uint96).max);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RebaseToken.RebaseToken__NewInterestRateShouldBeLessThanThePreviousInterestRate.selector,
+                rebaseToken.getInterestRate(),
+                interestRate
+            )
+        );
+        vm.prank(owner);
+        rebaseToken.setInterestRate(interestRate);
+    }
 }
