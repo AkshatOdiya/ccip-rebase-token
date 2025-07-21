@@ -33,11 +33,14 @@ import {CCIPLocalSimulatorFork, Register} from "@chainlink-local/src/ccip/CCIPLo
 import {RegistryModuleOwnerCustom} from "@ccip/contracts/src/v0.8/ccip/tokenAdminRegistry/RegistryModuleOwnerCustom.sol";
 import {TokenAdminRegistry} from "@ccip/contracts/src/v0.8/ccip/tokenAdminRegistry/TokenAdminRegistry.sol";
 import {RateLimiter} from "@ccip/contracts/src/v0.8/ccip/libraries/RateLimiter.sol";
+import {Client} from "@ccip/contracts/src/v0.8/ccip/libraries/Client.sol";
+import {IRouterClient} from "@ccip/contracts/src/v0.8/ccip/interfaces/IRouterClient.sol";
 
 contract CrossChainTest is Test {
     uint256 sepoliaFork;
     uint256 arbSepoliaFork;
     address immutable i_owner = makeAddr("owner");
+    address immutable i_user = makeAddr("user");
 
     CCIPLocalSimulatorFork ccipLocalSimulatorFork;
     RebaseToken sepoliaToken;
@@ -136,5 +139,64 @@ contract CrossChainTest is Test {
             inboundRateLimiterConfig: RateLimiter.Config({isEnabled: false, capacity: 0, rate: 0})
         });
         TokenPool(localPool).applyChainUpdates(chainsToAdd);
+    }
+
+    function bridgeTokens(
+        uint256 amountToBridge,
+        uint256 localFork,
+        uint256 remoteFork,
+        Register.NetworkDetails memory localNetworkDetails,
+        Register.NetworkDetails memory remoteNetworkDetails,
+        RebaseToken localToken,
+        RebaseToken remoteToken
+    ) public {
+        vm.selectFork(localFork);
+        Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
+        tokenAmounts[0] = Client.EVMTokenAmount({token: address(localToken), amount: amountToBridge});
+        // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
+        // address(linkToken) means fees are paid in LINK
+        Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
+            receiver: abi.encode(i_user),
+            data: "",
+            tokenAmounts: tokenAmounts,
+            feeToken: localNetworkDetails.linkAddress,
+            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 0}))
+        });
+
+        // Get the fee required to send the message
+        uint256 fee =
+            IRouterClient(localNetworkDetails.routerAddress).getFee(remoteNetworkDetails.chainSelector, message);
+
+        // It is like vm.deal and we doing things using chainlink local
+        ccipLocalSimulatorFork.requestLinkFromFaucet(i_user, fee);
+
+        // approve the Router to transfer LINK tokens on contract's behalf. It will spend the fees in LINK
+        vm.prank(i_user);
+        IERC20(localNetworkDetails.linkAddress).approve(localNetworkDetails.routerAddress, fee);
+
+        uint256 localBalanceBefore = localToken.balanceOf(i_user);
+
+        // approve the Router to spend tokens on contract's behalf. It will spend the amount of the given token
+        vm.prank(i_user);
+        IERC20(address(localToken)).approve(localNetworkDetails.routerAddress, amountToBridge);
+
+        // Send the message through the router
+        vm.prank(i_user);
+        IRouterClient(localNetworkDetails.routerAddress).ccipSend(remoteNetworkDetails.chainSelector, message);
+
+        uint256 localBalanceAfter = localToken.balanceOf(i_user);
+
+        assertEq(localBalanceAfter, localBalanceBefore - amountToBridge);
+        uint256 localUserInterestRate = localToken.getUserInterestRate(i_user);
+
+        // now go to the other chain
+        vm.selectFork(remoteFork);
+        vm.warp(block.timestamp + 20 minutes);
+        uint256 remoteBalanceBefore = remoteToken.balanceOf(i_user);
+        ccipLocalSimulatorFork.switchChainAndRouteMessage(remoteFork); // this line won't matter as we have already selected the fork, but for surity we can do this
+        uint256 remoteBalanceAfter = remoteToken.balanceOf(i_user);
+        assertEq(remoteBalanceAfter, amountToBridge + remoteBalanceBefore);
+        uint256 remoteUserInterestRate = remoteToken.getUserInterestRate(i_user);
+        assertEq(remoteUserInterestRate, localUserInterestRate);
     }
 }
