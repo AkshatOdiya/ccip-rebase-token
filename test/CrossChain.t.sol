@@ -147,27 +147,33 @@ contract CrossChainTest is Test {
 
         IERC20(address(localToken)).approve(localNetworkDetails.routerAddress, amountToBridge);
 
+        // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
         Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
             receiver: abi.encode(i_user),
             data: "",
             tokenAmounts: tokenToSendDetails,
             extraArgs: "",
-            feeToken: localNetworkDetails.linkAddress
+            feeToken: localNetworkDetails.linkAddress // Fee to be paid in link
         });
 
         vm.stopPrank();
+
+        // It is like vm.deal and we are doing things using chainlink local
         ccipLocalSimulatorFork.requestLinkFromFaucet(
             i_user, IRouterClient(localNetworkDetails.routerAddress).getFee(remoteNetworkDetails.chainSelector, message)
         );
 
         vm.startPrank(i_user);
+
+        // approve the Router to transfer LINK tokens on contract's behalf. It will spend the fees in LINK
         IERC20(localNetworkDetails.linkAddress).approve(
             localNetworkDetails.routerAddress,
-            IRouterClient(localNetworkDetails.routerAddress).getFee(remoteNetworkDetails.chainSelector, message)
+            IRouterClient(localNetworkDetails.routerAddress).getFee(remoteNetworkDetails.chainSelector, message) // getFee: Get the fee required to send the message
         );
 
         uint256 balanceBeforeBridge = localToken.balanceOf(i_user);
 
+        // Send the message through the router
         IRouterClient(localNetworkDetails.routerAddress).ccipSend(remoteNetworkDetails.chainSelector, message);
 
         uint256 balanceAfterBridge = localToken.balanceOf(i_user);
@@ -175,6 +181,7 @@ contract CrossChainTest is Test {
 
         vm.stopPrank();
 
+        // now go to the other chain
         vm.selectFork(remoteFork);
         vm.warp(block.timestamp + 900);
         uint256 initialRemoteBalance = remoteToken.balanceOf(i_user);
