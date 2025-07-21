@@ -38,6 +38,9 @@ contract CrossChainTest is Test {
     Register.NetworkDetails sepoliaNetworkDetails;
     Register.NetworkDetails arbSepoliaNetworkDetails;
 
+    /* for setUp(), steps are followed according to this
+    https://docs.chain.link/ccip/tutorials/evm/cross-chain-tokens/register-from-eoa-burn-mint-foundry#tutorial
+     */
     function setUp() public {
         string memory sepolia = vm.envString("ETHEREUM_SEPOLIA_RPC_URL");
         string memory arb_sepolia = vm.envString("ARBITRUM_SEPOLIA_RPC_URL");
