@@ -13,6 +13,11 @@ contract RebaseTokenPool is TokenPool {
     {}
 
     /// @notice burns the tokens on the source chain
+    /*
+    When tokens are sent from the source chain, this function is called. 
+    It burns the specified amount of rebase tokens on the source chain and then constructs 
+    and dispatches a CCIP message to the destination chain, instructing it to mint an equivalent amount.
+     */
     function lockOrBurn(Pool.LockOrBurnInV1 calldata lockOrBurnIn)
         external
         virtual
@@ -33,6 +38,10 @@ contract RebaseTokenPool is TokenPool {
     }
 
     /// @notice Mints the tokens on the source chain
+    /*
+    On the destination chain, this function is triggered upon receiving a valid CCIP message from the source chain's pool. 
+    It then mints the appropriate amount of rebase tokens to the recipient
+     */
     function releaseOrMint(Pool.ReleaseOrMintInV1 calldata releaseOrMintIn)
         external
         returns (Pool.ReleaseOrMintOutV1 memory)

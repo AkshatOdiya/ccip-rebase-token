@@ -15,6 +15,11 @@ import {RateLimiter} from "@ccip/contracts/src/v0.8/ccip/libraries/RateLimiter.s
 import {Client} from "@ccip/contracts/src/v0.8/ccip/libraries/Client.sol";
 import {IRouterClient} from "@ccip/contracts/src/v0.8/ccip/interfaces/IRouterClient.sol";
 
+/*
+ * `vm.createFork("rpc_url")` to create local forks of testnets like Sepolia and Arbitrum Sepolia. This allows tests to run against a snapshot of the real chain state.
+ * `CCIPLocalSimulatorFork` from Chainlink Local, enables the simulation of CCIP message routing and execution between these local forks, effectively creating a local, two-chain (or multi-chain) test environment.
+ */
+
 contract CrossChainTest is Test {
     address[] public allowlist = new address[](0);
 

@@ -46,7 +46,7 @@ contract RebaseTokenTest is Test {
         uint256 endBalance = rebaseToken.balanceOf(user);
         assertGt(endBalance, middleBalance);
 
-        // The test will fail due to unavoidable rounding errors in integer math if simple assertEq is used. Allow a difference of 1 in your assertion to fix this.
+        // The test will fail due to unavoidable rounding errors in integer math if simple assertEq is used. Allow a difference of 1 as tolerance in your assertion to fix this.
         assertApproxEqAbs(endBalance - middleBalance, middleBalance - startBalance, 1);
         vm.stopPrank();
     }

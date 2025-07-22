@@ -25,6 +25,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     event InterestRateSet(uint256 indexed newInterestRate);
 
+    //Initializes the token with standard parameters like name (e.g., "RebaseToken") and symbol (e.g., "RBT")
     constructor() ERC20("RebaseToken", "RBT") Ownable(msg.sender) {}
 
     function grantMintAndBurnRole(address _account) external onlyOwner {
@@ -45,6 +46,13 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         return super.balanceOf(_user);
     }
 
+    /*
+    The standard _mint and _burn functions (or their equivalents) will be augmented. 
+    Before any transfer, minting, or burning operation that affects a user's balance, 
+    a function like _mintAccruedInterest(address user) will be called. This function crystallizes 
+    any pending accrued interest into the user's principal balance, 
+    ensuring that all subsequent operations are based on their most up-to-date holdings.
+     */
     function mint(address _to, uint256 _amount, uint256 _userInterestRate) external onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccruedInterest(_to);
         s_userInterestRate[_to] = _userInterestRate;

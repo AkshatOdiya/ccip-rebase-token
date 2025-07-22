@@ -1,25 +1,4 @@
 // SPDX-License-Identifier: MIT
-
-// Layout of Contract:
-// version
-// imports
-// interfaces, libraries, contracts
-// errors
-// Type declarations
-// State variables
-// Events
-// Modifiers
-// Functions
-
-// Layout of Functions:
-// constructor
-// receive function (if exists)
-// fallback function (if exists)
-// external
-// public
-// internal
-// private
-// view & pure functions
 pragma solidity ^0.8.20;
 
 import {IRebaseToken} from "./interfaces/IRebaseToken.sol";
@@ -43,7 +22,7 @@ contract Vault {
     /**
      * @notice allows users to deposit ETH into the vault and mint rebase token in return
      */
-    receive() external payable {}
+    receive() external payable {} // This special function allows the contract to receive ETH directly (e.g., through simple transfers), which is typically routed to the deposit logic
 
     function deposit() external payable {
         // we need to use the amount of eth the user has sent to mint tokens to the user
