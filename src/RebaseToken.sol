@@ -12,6 +12,15 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
  * @notice The interest rate in the smart contract can only decrease.
  * @notice Each user will have their own interest rate that is the global interest rate at the time of deposit.
  */
+
+/*
+1. Principal Balance: This represents the actual number of tokens that have been explicitly minted to or burned from a user's address. 
+In Solidity smart contracts, this is typically tracked by the standard ERC20 balanceOf mapping, which we access via super.balanceOf when inheriting from an ERC20 implementation.
+
+2. Current Balance (including Interest): This is the theoretical balance a user should have at any given moment. It's calculated by taking their principal balance 
+and adding the interest that has accrued since their last interaction with the contract (e.g., mint, burn, transfer). 
+This calculation happens dynamically when the balance is queried, often through an overridden balanceOf function specific to the rebase token contract.
+ */
 contract RebaseToken is ERC20, Ownable, AccessControl {
     error RebaseToken__NewInterestRateShouldBeLessThanThePreviousInterestRate(
         uint256 oldInterestRate, uint256 newInterestRate
@@ -21,6 +30,8 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
     uint256 private s_interestRate = 5e10;
     mapping(address => uint256) private s_userInterestRate;
+
+    // A mapping to store the timestamp of the last time each user's balance effectively accrued interest or was updated.
     mapping(address => uint256) private s_lastUpdatedTimeStamp;
 
     event InterestRateSet(uint256 indexed newInterestRate);
@@ -32,6 +43,11 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         _grantRole(MINT_AND_BURN_ROLE, _account);
     }
 
+    /**
+     * @notice Set the global interest rate for the contract.
+     * @param _newInterestRate The new interest rate to set (scaled by PRECISION_FACTOR basis points per second).
+     * @dev The interest rate can only decrease. Access control (e.g., onlyOwner) should be added.
+     */
     function setInterestRate(uint256 _newInterestRate) external onlyOwner {
         // As the interest rate can only decrease
         if (_newInterestRate > s_interestRate) {
@@ -84,7 +100,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     function balanceOf(address _user) public view override returns (uint256) {
         // get the current principle balance of the user(the number of tokens actually minted including the last interest minted)
         // multiply the principle balance by the interest rate
-        // we need to use the super keywordas we are overriding the ERC20 contract funtion to tell our balancOf function to call the balanceOf of ERC20
+        // we need to use the super keyword as we are overriding the ERC20 contract funtion to tell our balancOf function to call the balanceOf of ERC20
         /*
         Divide by PRECISION_FACTOR beacuse balanceOf and _calculateUserAccumulatedInterestSinceLastUpdate will both give 18 decimal precision
         number so the total precision will become of 1e36, thats why divide it by PRECISION_FACTOR to get 18 decimal precision and get
@@ -167,6 +183,11 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         _mint(_user, balanceIncrease);
     }
 
+    /**
+     * @notice Gets the locked-in interest rate for a specific user.
+     * @param _user The address of the user.
+     * @return The user's specific interest rate.
+     */
     function getUserInterestRate(address _user) external view returns (uint256) {
         return s_userInterestRate[_user];
     }
