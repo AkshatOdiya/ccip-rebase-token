@@ -308,3 +308,5 @@ Let's visualize how this interest rate mechanism plays out for different users a
 
    ---
    
+>**_!IMPORTANT_**  
+> We use low-level `.call{value: ...}("")`. Avoid using `.transfer()` or `.send()` as they have fixed gas stipends that can cause issues if the recipient is a contract with a fallback function that requires more gas.

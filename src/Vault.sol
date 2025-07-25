@@ -36,8 +36,17 @@ contract Vault {
     /**
      * @notice allows users to deposit ETH into the vault and mint rebase token in return
      */
+
+    /**
+     * @notice The receive() external payable {} function is an empty function that is automatically executed when the contract receives ETH without any calldata.
+     * Any ETH sent this way simply increases the contract's balance.
+     */
     receive() external payable {} // This special function allows the contract to receive ETH directly (e.g., through simple transfers), which is typically routed to the deposit logic
 
+    /*
+    It's marked external payable, allowing users to call it and send ETH along with the transaction.
+    It doesn't take any arguments; the amount of ETH deposited is implicitly msg.value
+     */
     function deposit() external payable {
         // we need to use the amount of eth the user has sent to mint tokens to the user
         i_rebaseToken.mint(msg.sender, msg.value, i_rebaseToken.getInterestRate());
