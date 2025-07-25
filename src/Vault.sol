@@ -3,6 +3,20 @@ pragma solidity ^0.8.20;
 
 import {IRebaseToken} from "./interfaces/IRebaseToken.sol";
 
+/*
+Primary Responsibility of this contract:
+
+1. `Receiving ETH Deposits`: Users will send Ether (ETH) to the Vault.
+
+2. `Issuing RebaseTokens`: In exchange for deposited ETH, the Vault will mint and distribute a corresponding 
+amount of our custom RebaseToken to the user.
+
+3. `Handling Redemptions`: Users will be able to redeem their RebaseTokens through the Vault to reclaim their ETH.
+
+4. `Accruing Rewards`: The Vault is designed to receive ETH rewards, which will later be distributed among 
+token holders (though the specific distribution mechanism for these rewards is beyond the scope of this immediate lesson).
+ */
+
 contract Vault {
     // we need to pass the token address to the constructor
     // create a deposit function that mints token to the user equal to the amount of ETH user deposits
