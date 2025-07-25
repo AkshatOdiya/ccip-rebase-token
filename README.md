@@ -310,3 +310,5 @@ Let's visualize how this interest rate mechanism plays out for different users a
    
 >**_!IMPORTANT_**  
 > We use low-level `.call{value: ...}("")`. Avoid using `.transfer()` or `.send()` as they have fixed gas stipends that can cause issues if the recipient is a contract with a fallback function that requires more gas.
+
+* Using `bound(variable, min, max)` is more effective than `vm.assume` for setting input boundaries as it guides the fuzzer, as `vm.assume` can make many fuzz runs irrelevant(those values would be just skipped from test).
