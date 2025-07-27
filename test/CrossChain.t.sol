@@ -218,6 +218,26 @@ contract CrossChainTest is Test {
         TokenPool(localPool).applyChainUpdates(chains);
     }
 
+    /// @notice The idea of bridgeTokens function is taken from the contract under *Tutorial* https://docs.chain.link/ccip/tutorials/evm/transfer-tokens-from-contract
+    /**
+     * @notice The typical cross-chain transfer process, as implemented in this test, follows these steps:
+     *
+     * 1. Build the Message: Construct an EVM2AnyMessage struct containing details like the receiver's address, token transfer specifics, the fee token, and any extra arguments for CCIP.
+     *
+     * 2. Calculate Fees: Query the source chain's Router contract using getFee() to determine the cost of the CCIP transaction.
+     *
+     * 3. Fund Fees: In our local test setup, we'll use a helper function to mint LINK tokens (the designated fee token in this example) to the user.
+     *
+     * 4. Approve Fee Token: The user must approve the source chain's Router contract to spend the calculated LINK fee.
+     *
+     * 5. Approve Bridged Token: The user must also approve the source chain's Router to spend the amount of the token being bridged.
+     *
+     * 6. Send CCIP Message: Invoke ccipSend() on the source chain's Router, passing the destination chain selector and the prepared message.
+     *
+     * 7. Simulate Message Propagation: Utilize the CCIPLocalSimulatorFork to mimic the message's journey and processing on the destination chain, including fast-forwarding time to simulate network latency.
+     *
+     * 8. Verify Token Reception: Confirm that the tokens (and any associated data, like interest rates for a RebaseToken) are correctly credited to the receiver on the destination chain.
+     */
     function bridgeTokens(
         uint256 amountToBridge,
         uint256 localFork,
@@ -233,6 +253,7 @@ contract CrossChainTest is Test {
         Client.EVMTokenAmount[] memory tokenToSendDetails = new Client.EVMTokenAmount[](1);
         tokenToSendDetails[0] = Client.EVMTokenAmount({token: address(localToken), amount: amountToBridge});
 
+        // Approve the actual token to be bridged
         IERC20(address(localToken)).approve(localNetworkDetails.routerAddress, amountToBridge);
 
         // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
@@ -275,7 +296,7 @@ contract CrossChainTest is Test {
         uint256 initialRemoteBalance = remoteToken.balanceOf(i_user);
 
         vm.selectFork(localFork);
-        ccipLocalSimulatorFork.switchChainAndRouteMessage(remoteFork);
+        ccipLocalSimulatorFork.switchChainAndRouteMessage(remoteFork); // internally selects the remoteFork and processes the enqueued CCIP message.
 
         uint256 finalRemoteBalance = remoteToken.balanceOf(i_user);
         assertEq(finalRemoteBalance, initialRemoteBalance + amountToBridge);
@@ -307,6 +328,19 @@ contract CrossChainTest is Test {
         vm.startPrank(i_user);
         Vault(payable(address(vault))).deposit{value: SEND_VALUE}();
         vm.stopPrank();
+
+        /*
+        When a function (like vault.deposit()) is payable and expects ETH, Foundry tests must explicitly send this value. 
+        The syntax is: ContractType(payable(address(contractInstance))).functionName{value: amountToSend}(arguments);. This involves:
+
+        1. Getting the address of the contract instance.
+
+        2. Casting this address to payable.
+
+        3. Casting this payable address back to the ContractType to access its functions.
+
+        4. Appending {value: amountToSend} before the function arguments.
+         */
 
         bridgeTokens(
             SEND_VALUE,
