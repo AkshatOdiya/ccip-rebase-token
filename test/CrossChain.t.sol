@@ -20,6 +20,24 @@ import {IRouterClient} from "@ccip/contracts/src/v0.8/ccip/interfaces/IRouterCli
  * `CCIPLocalSimulatorFork` from Chainlink Local, enables the simulation of CCIP message routing and execution between these local forks, effectively creating a local, two-chain (or multi-chain) test environment.
  */
 
+/*
+Contract Deployment order:
+1. RebaseToken and RebaseTokenPool on Sepolia.
+
+2. RebaseToken and RebaseTokenPool on Arbitrum Sepolia.
+
+3. Vault on Sepolia.
+ */
+
+/*
+CCIP Configuration: This includes:
+
+1. Granting appropriate roles (e.g., minter/burner roles to the token pools or vault).
+
+2. Registering the token pools with the CCIP routers on each chain.
+
+3. Setting supported chains and other CCIP-specific parameters.
+ */
 contract CrossChainTest is Test {
     address[] public allowlist = new address[](0);
 
@@ -53,6 +71,8 @@ contract CrossChainTest is Test {
         arbSepoliaFork = vm.createFork(arb_sepolia);
 
         ccipLocalSimulatorFork = new CCIPLocalSimulatorFork();
+        // vm.makePersistent to ensure that this single instance of CCIPLocalSimulatorFork is accessible with the same address and state on both the Sepolia and Arbitrum Sepolia forks.
+        // This shared simulator is what will enable us to test message passing between them.
         vm.makePersistent(address(ccipLocalSimulatorFork));
 
         // Deploy on Sepolia
@@ -73,19 +93,34 @@ contract CrossChainTest is Test {
         sepoliaToken.grantMintAndBurnRole(address(sepoliaTokenPool));
         sepoliaToken.grantMintAndBurnRole(address(vault));
 
+        // CCIP Configuration:
+        /*
+        First, the owner of the token (our EOA in this test setup) needs to nominate themselves (or another designated address) 
+        as the pending administrator for the token. This is done by calling the registerAdminViaOwner(address token) function on the RegistryModuleOwnerCustom contract. 
+        The address of this contract is available in the networkDetails.registryModuleOwnerCustomAddress field obtained earlier.
+         */
         RegistryModuleOwnerCustom(sepoliaNetworkDetails.registryModuleOwnerCustomAddress).registerAdminViaOwner(
             address(sepoliaToken)
         );
 
+        /*
+        After registering as a pending admin, the nominated address (our owner EOA) must finalize the process by accepting the admin role. 
+        This is achieved by calling the acceptAdminRole(address localToken) function on the TokenAdminRegistry contract. 
+        The address for this contract is found in networkDetails.tokenAdminRegistryAddress.
+         */
         TokenAdminRegistry(sepoliaNetworkDetails.tokenAdminRegistryAddress).acceptAdminRole(address(sepoliaToken));
+
+        // Link Tokens to Their Respective Pools
         TokenAdminRegistry(sepoliaNetworkDetails.tokenAdminRegistryAddress).setPool(
             address(sepoliaToken), address(sepoliaTokenPool)
         );
 
         vm.stopPrank();
 
+        // ============================================================================================================================================================
+
         // Deploy on Arbitrum Sepolia
-        vm.selectFork(arbSepoliaFork);
+        vm.selectFork(arbSepoliaFork); // switch fork to Arbitrum Sepolia
         vm.startPrank(i_owner);
 
         arbSepoliaToken = new RebaseToken();
@@ -100,11 +135,23 @@ contract CrossChainTest is Test {
 
         arbSepoliaToken.grantMintAndBurnRole(address(arbSepoliaTokenPool));
 
+        // CCIP Configuration:
+        /*
+        First, the owner of the token (our EOA in this test setup) needs to nominate themselves (or another designated address) 
+        as the pending administrator for the token. This is done by calling the registerAdminViaOwner(address token) function on the RegistryModuleOwnerCustom contract. 
+        The address of this contract is available in the networkDetails.registryModuleOwnerCustomAddress field obtained earlier.
+         */
         RegistryModuleOwnerCustom(arbSepoliaNetworkDetails.registryModuleOwnerCustomAddress).registerAdminViaOwner(
             address(arbSepoliaToken)
         );
 
+        /*
+        After registering as a pending admin, the nominated address (our owner EOA) must finalize the process by accepting the admin role. 
+        This is achieved by calling the acceptAdminRole(address localToken) function on the TokenAdminRegistry contract. 
+        The address for this contract is found in networkDetails.tokenAdminRegistryAddress.
+         */
         TokenAdminRegistry(arbSepoliaNetworkDetails.tokenAdminRegistryAddress).acceptAdminRole(address(arbSepoliaToken));
+        // Link Tokens to Their Respective Pools
         TokenAdminRegistry(arbSepoliaNetworkDetails.tokenAdminRegistryAddress).setPool(
             address(arbSepoliaToken), address(arbSepoliaTokenPool)
         );
@@ -112,6 +159,35 @@ contract CrossChainTest is Test {
         vm.stopPrank();
     }
 
+    /*
+    Before you can mint tokens and execute cross-chain transfers using Chainlink CCIP (Cross-Chain Interoperability Protocol) with a Burn & Mint token mechanism, 
+    a critical prerequisite is the configuration of your deployed Token Pools. This configuration step establishes the necessary permissions and connections, 
+    enabling the pools on different chains to interact seamlessly. 
+     */
+    /*
+    When you configure a local token pool to add a remote chain via the chainsToAdd parameter, you are effectively "enabling" that remote chain for interaction. 
+    This means the local pool (the one on which applyChainUpdates is being called) will be permitted to:
+
+     * Receive tokens from the specified remote chain.
+
+     * Send tokens to the specified remote chain.
+     */
+
+    /*
+    Once your tokens (e.g., sepoliaToken, arbSepoliaToken) and token pools (e.g., sepoliaPool, arbSepoliaPool) are deployed on their respective chains, 
+    you call the configureTokenPool helper function within your test's setUp function. This must be done for each direction of interaction.
+     */
+
+    /*
+    Timing is Crucial: Pool configuration via applyChainUpdates must be performed after deploying your token pool contracts on all relevant chains but before 
+    attempting any cross-chain minting or transfer operations.
+     */
+
+    /*
+    Clarity in Direction: When configuring pools for bidirectional communication (e.g., Chain A <-> Chain B), ensure you call applyChainUpdates on Chain A's pool 
+    (listing Chain B as remote) AND on Chain B's pool (listing Chain A as remote).
+     */
+    /// @notice main objective of this function is `applyChainUpdates`
     function configureTokenPool(
         uint256 fork,
         address localPool,
@@ -125,6 +201,10 @@ contract CrossChainTest is Test {
         bytes memory encodedRemotePoolAddress = abi.encode(remotePoolAddress);
         TokenPool.ChainUpdate[] memory chains = new TokenPool.ChainUpdate[](1);
 
+        /*
+        The primary purpose of applyChainUpdates is to update the chain-specific permissions and configurations for the token pool contract on which it is called. 
+        Essentially, it tells a local pool which remote chains it is allowed to interact with.
+         */
         chains[0] = TokenPool.ChainUpdate({
             remoteChainSelector: remoteChainSelector,
             allowed: true,
@@ -201,6 +281,10 @@ contract CrossChainTest is Test {
         assertEq(finalRemoteBalance, initialRemoteBalance + amountToBridge);
     }
 
+    /*
+    Once your tokens (e.g., sepoliaToken, arbSepoliaToken) and token pools (e.g., sepoliaPool, arbSepoliaPool) are deployed on their respective chains, 
+    you call the configureTokenPool helper function within your test's setUp function. This must be done for each direction of interaction.
+     */
     function testBridgeAllTokens() public {
         configureTokenPool(
             sepoliaFork,
